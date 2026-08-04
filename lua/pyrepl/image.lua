@@ -200,7 +200,13 @@ function M.open_image_history(idx, focus)
         vim.on_key(nil, ns)
         vim.api.nvim_set_current_win(state.win)
     else
-        vim.on_key(function()
+        -- image.nvim can emit <Ignore> code to force redraw
+        -- ignoring it so window will not auto-close
+        local ignore = vim.api.nvim_replace_termcodes("<Ignore>", true, false, true)
+        vim.on_key(function(key)
+            if key == ignore then
+                return
+            end
             vim.on_key(nil, ns)
             M.close_image_history()
         end, ns)

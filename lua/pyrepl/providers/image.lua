@@ -53,10 +53,19 @@ function M:render(buf, win)
         width = width,
     })
 
-    self.image:move(
-        math.floor(math.max(width - self.image.rendered_geometry.width, 0) / 2),
-        math.floor(math.max(height - self.image.rendered_geometry.height, 0) / 2)
-    )
+    -- image.nvim does async rendering
+    local geometry
+    local ready = vim.wait(250, function()
+        geometry = self.image.rendered_geometry
+        return geometry and geometry.width ~= nil and geometry.height ~= nil
+    end, 10)
+
+    if ready then
+        self.image:move(
+            math.floor(math.max(width - geometry.width, 0) / 2),
+            math.floor(math.max(height - geometry.height, 0) / 2)
+        )
+    end
 end
 
 function M:clear()
