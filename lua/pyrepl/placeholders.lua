@@ -242,7 +242,8 @@ end
 ---@param rows integer
 ---@return boolean
 function M.render_inline(img_base64, img_id, cols, rows)
-    if type(vim.api.nvim_ui_send) ~= "function" or not vim.o.termguicolors then
+    -- send_apc also supports Neovim 0.11 through its stderr fallback.
+    if not vim.o.termguicolors then
         return false
     end
     if not is_kitty_graphics_terminal() then
