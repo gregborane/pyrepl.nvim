@@ -12,7 +12,6 @@ local state = {
     buf = nil,
     win = nil,
 }
-
 ---Open a floating window for image display.
 ---Placed in the top-right corner in a vertical layout.
 ---Placed in the bottom-right corner in a horizontal layout.
@@ -24,12 +23,10 @@ local function open_image_win(buf)
 
     local float_width = math.max(1, math.floor(width * config.get_state().image_width_ratio))
     local float_height = math.max(1, math.floor(height * config.get_state().image_height_ratio))
-
     local col = math.max(0, width - float_width)
     -- bottom-right corner for split_horizontal, top-right corner otherwise
     -- subtract 2 to take command line into account
     local row = math.max(0, config.get_state().split_horizontal and height - float_height - 2 or 0)
-
     -- effective window size (without borders)
     -- subtract 2 to take borders into account
     local opts = {
@@ -47,7 +44,6 @@ local function open_image_win(buf)
 
     return win
 end
-
 ---@param idx integer
 local function pop_history(idx)
     if state.history[idx] then
@@ -58,14 +54,51 @@ local function pop_history(idx)
 end
 
 ---@param img_base64 string
+---@return pyrepl.Image|nil
 local function push_history(img_base64)
     if #state.history >= config.get_state().image_max_history then
         pop_history(1)
     end
-    table.insert(state.history, config.get_image_provider().create(img_base64))
+
+    local img = config.get_image_provider().create(img_base64)
+    if not img then
+        return nil
+    end
+
+    table.insert(state.history, img)
+    return img
 end
 
----Clear image when buffer is wiped/deleted.
+---@param img_base64 string
+---@param spec table|nil
+---@return boolean
+local function render_inline(img_base64, spec)
+    if type(spec) ~= "table" then
+        return false
+    end
+
+    local provider = config.get_image_provider()
+    if type(provider.render_inline) ~= "function" then
+        return false
+    end
+
+    local image_id = tonumber(spec.image_id)
+    local cols = tonumber(spec.cols)
+    local rows = tonumber(spec.rows)
+    if not (image_id and cols and rows) then
+        return false
+    end
+
+    local ok, rendered = pcall(provider.render_inline, img_base64, image_id, cols, rows)
+    if not ok then
+        vim.notify(config.get_message_prefix() .. tostring(rendered), vim.log.levels.WARN)
+        return false
+    end
+
+    return rendered == true
+end
+
+---@Clear image when buffer is wiped/deleted.
 local function setup_buf_autocmds()
     if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then
         return
@@ -76,7 +109,6 @@ local function setup_buf_autocmds()
         group = group,
         buffer = state.buf,
     })
-
     vim.api.nvim_create_autocmd({ "BufWipeout", "BufDelete" }, {
         group = group,
         buffer = state.buf,
@@ -87,12 +119,11 @@ local function setup_buf_autocmds()
     })
 end
 
----Clear image when window is closed.
+---@Clear image when window is closed.
 local function setup_win_autocmds()
     if not (state.win and vim.api.nvim_win_is_valid(state.win)) then
         return
     end
-
     vim.api.nvim_clear_autocmds({
         event = "WinClosed",
         group = group,
@@ -113,7 +144,6 @@ local function setup_keybinds()
     if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then
         return
     end
-
     local opts = { noremap = true, silent = true, nowait = true, buffer = state.buf }
 
     -- show previous image
@@ -128,7 +158,6 @@ local function setup_keybinds()
             M.open_image_history(state.idx - 1, true)
         end
     end, opts)
-
     -- show next image
     vim.keymap.set("n", "k", function()
         if state.idx < #state.history then
@@ -141,7 +170,6 @@ local function setup_keybinds()
             M.open_image_history(state.idx + 1, true)
         end
     end, opts)
-
     -- delete image
     vim.keymap.set("n", "dd", function()
         pop_history(state.idx)
@@ -161,7 +189,6 @@ local function setup_keybinds()
         M.close_image_history()
     end, opts)
 end
-
 ---@param idx? integer
 ---@param focus? boolean if not passed, equals true
 function M.open_image_history(idx, focus)
@@ -175,7 +202,6 @@ function M.open_image_history(idx, focus)
         state.history[state.idx]:clear()
     end
     state.idx = math.max(1, math.min(idx or state.idx, #state.history))
-
     -- ensure state buf is valid
     if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then
         state.buf = vim.api.nvim_create_buf(false, true)
@@ -190,11 +216,9 @@ function M.open_image_history(idx, focus)
     else
         vim.api.nvim_win_set_buf(state.win, state.buf)
     end
-
     local title = string.format(" History %d/%d ", state.idx, #state.history)
     local opts = { title = title, title_pos = "center" }
     vim.api.nvim_win_set_config(state.win, opts)
-
     -- focus history manager or show image once before any cursor movement
     if focus or focus == nil then
         vim.on_key(nil, ns)
@@ -211,7 +235,6 @@ function M.open_image_history(idx, focus)
             M.close_image_history()
         end, ns)
     end
-
     -- render current image
     state.history[state.idx]:render(state.buf, state.win)
 end
@@ -229,7 +252,6 @@ function M.close_image_history()
     if state.history[state.idx] then
         state.history[state.idx]:clear()
     end
-
     if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
         pcall(function()
             vim.api.nvim_buf_delete(state.buf, { force = true })
@@ -246,15 +268,26 @@ function M.close_image_history()
 
     state.closing = false
 end
-
----Push base64 PNG image to history and display it.
+---Push base64 PNG image to history, render inline when possible, and fall back
+---to the existing floating history view otherwise.
 ---@param img_base64 string
-function M.console_endpoint(img_base64)
+---@param inline_spec? table
+---@return boolean rendered_inline
+function M.console_endpoint(img_base64, inline_spec)
     if type(img_base64) ~= "string" or img_base64 == "" then
         error(config.get_message_prefix() .. "image data missing or invalid", 0)
     end
-    push_history(img_base64)
+
+    if not push_history(img_base64) then
+        error(config.get_message_prefix() .. "failed to create image history entry", 0)
+    end
+
+    if render_inline(img_base64, inline_spec) then
+        return true
+    end
+
     M.open_image_history(#state.history, false)
+    return false
 end
 
 return M
