@@ -135,15 +135,12 @@ You will also get completions for `jupyter-console` CLI arguments.
 
 Use `placeholders` provider for [ghostty](https://github.com/ghostty-org/ghostty) and [kitty](https://github.com/kovidgoyal/kitty) terminals.
 Enable `vim.opt.termguicolors = true` for inline images. This built-in provider
-uses the Kitty graphics protocol directly; it does not require the Kitty
-executable or `image.nvim`. Images also remain available through
+uses the Kitty graphics protocol directly; 
+
+Images also remain available through
 `:PyreplOpenImageHistory`. If inline rendering is unavailable, images open in
-the floating history window instead. Inline images use a box of up to 80 columns
-and 20 rows, limited to half the terminal height, as in the reference renderer.
-Terminal support is selected through `image_provider`, without terminal-name detection.
-
-This allows image display in hard cases (for example, when Neovim is started in nested `ssh`, `tmux`, and `docker`).
-
+the floating history window instead. This allows image display in hard cases 
+(for example, when Neovim is started in nested `ssh`, `tmux`, and `docker`).
 For other terminals, change provider to `image` - [image.nvim](https://github.com/3rd/image.nvim) will be used to display images.
 For example, to display images in a terminal with `sixel` protocol support:
 

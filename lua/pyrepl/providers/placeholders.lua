@@ -229,7 +229,9 @@ function M.render_inline(img_base64, cols, rows)
     create_placement(id, cols, rows)
 
     local color = ("\27[38;2;%d;%d;%dm"):format(
-        math.floor(id / 65536), math.floor(id / 256) % 256, id % 256
+        math.floor(id / 65536),
+        math.floor(id / 256) % 256,
+        id % 256
     )
     local lines = { "" }
     for row = 1, rows do
